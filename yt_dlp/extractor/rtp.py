@@ -7,6 +7,7 @@ from .common import InfoExtractor
 from ..utils import js_to_json
 
 
+# https://www.rtp.pt/play/zigzag/p13166/e757904/25-curiosidades-25-de-abril
 class RTPIE(InfoExtractor):
     _VALID_URL = r'https?://(?:www\.)?rtp\.pt/play/p(?P<program_id>[0-9]+)/(?P<id>[^/?#]+)/?'
     _TESTS = [{
@@ -77,6 +78,85 @@ class RTPIE(InfoExtractor):
                 'url': f,
                 'vcodec': 'none' if config.get('mediaType') == 'audio' else None,
             })
+
+        subtitles = {}
+
+        vtt = config.get('vtt')
+        if vtt is not None:
+            for lcode, lname, url in vtt:
+                subtitles.setdefault(lcode, []).append({
+                    'name': lname,
+                    'url': url,
+                })
+
+        return {
+            'id': video_id,
+            'title': title,
+            'formats': formats,
+            'description': self._html_search_meta(['description', 'twitter:description'], webpage),
+            'thumbnail': config.get('poster') or self._og_search_thumbnail(webpage),
+            'subtitles': subtitles,
+        }
+
+
+class RTPZigZagIE(InfoExtractor):
+    _VALID_URL = r'https?://(?:www\.)?rtp\.pt/play/zigzag/p(?P<program_id>[0-9]+)/(?P<id>[^/?#]+)/?'
+
+    _TESTS = [{
+        'url': 'https://www.rtp.pt/play/zigzag/p13166/e757904/25-curiosidades-25-de-abril',
+        'info_dict': {
+            'id': 'e757904',
+            'ext': 'mp4',
+            'title': '25 Curiosidades, 25 de Abril',
+            'description': 'Estudar ou não estudar - Em cada um dos episódios descobrimos uma curiosidade acerca de como era viver em Portugal antes da revolução do 25 de abr',
+            'thumbnail': r're:^https?://.*\.jpg',
+        },
+    }]
+
+    _RX_OBFUSCATION = re.compile(r'''(?xs)
+        atob\s*\(\s*decodeURIComponent\s*\(\s*
+            (\[[0-9A-Za-z%,'"]*\])
+        \s*\.\s*join\(\s*(?:""|'')\s*\)\s*\)\s*\)
+    ''')
+
+    def __unobfuscate(self, data, *, video_id):
+        if data.startswith('{'):
+            data = self._RX_OBFUSCATION.sub(
+                lambda m: json.dumps(
+                    base64.b64decode(urllib.parse.unquote(
+                        ''.join(self._parse_json(m.group(1), video_id)),
+                    )).decode('iso-8859-1')),
+                data)
+        return js_to_json(data)
+
+    def _real_extract(self, url):
+        video_id = self._match_id(url)
+
+        webpage = self._download_webpage(url, video_id)
+        title = self._html_search_meta(
+            'twitter:title', webpage, display_name='title', fatal=True)
+
+        config = self._search_regex(
+            r'''(?sx)
+                var\s+player1\s+=\s+new\s+RTPPlayer\s*\((?P<config>{(?:(?!\*/).)+?})\);(?!\s*\*/)
+            ''', webpage,
+            'player config', group=('config'))
+
+        config = self._parse_json(
+            config, video_id,
+            lambda data: self.__unobfuscate(data, video_id=video_id))
+
+        formats = []
+        f_hls = config.get('file').get('hls')
+        if f_hls is not None:
+            formats.extend(self._extract_m3u8_formats(
+                f_hls, video_id, 'mp4', 'm3u8_native', m3u8_id='hls'))
+
+        formats.append({
+            'format_id': 'f',
+            'url': f_hls,
+            'vcodec': 'none' if config.get('mediaType') == 'audio' else None,
+        })
 
         subtitles = {}
 
