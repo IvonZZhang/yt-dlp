@@ -145,18 +145,28 @@ class RTPZigZagIE(InfoExtractor):
         config = self._parse_json(
             config, video_id,
             lambda data: self.__unobfuscate(data, video_id=video_id))
+        f = config.get('file')
 
         formats = []
-        f_hls = config.get('file').get('hls')
-        if f_hls is not None:
-            formats.extend(self._extract_m3u8_formats(
-                f_hls, video_id, 'mp4', 'm3u8_native', m3u8_id='hls'))
+        if isinstance(f, dict):
+            # This is a video file
+            f_hls = f.get('hls')
+            if f_hls is None:
+                f_hls = f.get('fps')
+            if f_hls is not None:
+                formats.extend(self._extract_m3u8_formats(
+                    f_hls, video_id, 'mp4', 'm3u8_native', m3u8_id='hls'))
 
-        formats.append({
-            'format_id': 'f',
-            'url': f_hls,
-            'vcodec': 'none' if config.get('mediaType') == 'audio' else None,
-        })
+            f_dash = f.get('dash')
+            if f_dash is not None:
+                formats.extend(self._extract_mpd_formats(f_dash, video_id, mpd_id='dash'))
+        else:
+            # This is an audio file
+            formats.append({
+                'format_id': 'f',
+                'url': f,
+                'vcodec': 'none' if config.get('mediaType') == 'audio' else None,
+            })
 
         subtitles = {}
 
