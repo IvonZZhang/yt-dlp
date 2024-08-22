@@ -7,7 +7,6 @@ from .common import InfoExtractor
 from ..utils import js_to_json
 
 
-# https://www.rtp.pt/play/zigzag/p13166/e757904/25-curiosidades-25-de-abril
 class RTPIE(InfoExtractor):
     _VALID_URL = r'https?://(?:www\.)?rtp\.pt/play/p(?P<program_id>[0-9]+)/(?P<id>[^/?#]+)/?'
     _TESTS = [{
